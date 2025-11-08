@@ -156,8 +156,8 @@ while running:
     screen.blit(score_text, (20, 20))
 
     # Player Health Bar
-    pygame.draw.rect(screen, (100, 0, 0), (20, 60, 100, 10))
-    pygame.draw.rect(screen, (0, 255, 0), (20, 60, 100 * (player_health / player_max_health), 10))
+    pygame.draw.rect(screen, (100, 0, 0), (20, 630, 100, 10))
+    pygame.draw.rect(screen, (0, 255, 0), (20, 630, 100 * (player_health / player_max_health), 10))
 
     pygame.display.flip()
     clock.tick(60)
