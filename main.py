@@ -1,6 +1,11 @@
 import pygame, random, sys
 
 pygame.init()
+pygame.mixer.init()  # Initialize the mixer for music
+
+# Load and play background music endlessly
+pygame.mixer.music.load("arena.mp3")
+pygame.mixer.music.play(-1)  # -1 loops indefinitely
 
 # --- Window Setup ---
 WIDTH, HEIGHT = 1000, 650
@@ -38,6 +43,73 @@ attack_cooldown_max = 30
 # --- Font Setup ---
 pygame.font.init()
 ui_font = pygame.font.SysFont(None, 36)
+
+import pygame, random, sys
+
+pygame.init()
+pygame.mixer.init()
+
+# --- Window Setup ---
+WIDTH, HEIGHT = 1000, 650
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Arena Battle")
+
+clock = pygame.time.Clock()
+
+# --- Colors ---
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GREEN = (50, 200, 50)
+BLUE = (0, 0, 255)
+
+# --- Load Assets ---
+arena_bg = pygame.image.load("arena.png").convert()
+arena_bg = pygame.transform.scale(arena_bg, (WIDTH, HEIGHT))
+pygame.mixer.music.load("arena.mp3")
+pygame.mixer.music.play(-1)
+
+# --- Font ---
+ui_font = pygame.font.SysFont(None, 48)
+
+# --- Main Menu ---
+def main_menu():
+    menu_running = True
+    while menu_running:
+        screen.fill(BLACK)
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_click = pygame.mouse.get_pressed()
+
+        # Menu options
+        start_rect = pygame.Rect(WIDTH//2 - 150, HEIGHT//2 - 60, 300, 50)
+        quit_rect = pygame.Rect(WIDTH//2 - 150, HEIGHT//2 + 20, 300, 50)
+
+        # Draw buttons
+        pygame.draw.rect(screen, GREEN if start_rect.collidepoint(mouse_pos) else WHITE, start_rect)
+        pygame.draw.rect(screen, GREEN if quit_rect.collidepoint(mouse_pos) else WHITE, quit_rect)
+
+        start_text = ui_font.render("Start Game", True, BLACK)
+        quit_text = ui_font.render("Quit Game", True, BLACK)
+        screen.blit(start_text, (start_rect.centerx - start_text.get_width()//2, start_rect.centery - start_text.get_height()//2))
+        screen.blit(quit_text, (quit_rect.centerx - quit_text.get_width()//2, quit_rect.centery - quit_text.get_height()//2))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        # Check clicks
+        if mouse_click[0]:
+            if start_rect.collidepoint(mouse_pos):
+                menu_running = False  # Exit menu and start game
+            if quit_rect.collidepoint(mouse_pos):
+                pygame.quit()
+                sys.exit()
+
+        pygame.display.flip()
+        clock.tick(60)
+
+# --- Call Main Menu before starting game ---
+main_menu()
 
 # --- Spawner + Upgrade Door Positions ---
 spawners = [
@@ -166,7 +238,7 @@ while running:
             for enemy in enemy_list[:]:
                 if attack_hitbox.colliderect(enemy):
                     enemy_list.remove(enemy)
-                    score += 10
+                    score += 1
 
         # === WAVE COMPLETE ===
         if in_wave and len(enemy_list) == 0:
@@ -273,3 +345,6 @@ while running:
     clock.tick(60)
 
 pygame.quit()
+
+pygame.quit()
+
