@@ -1,180 +1,273 @@
-import pygame
-import random
+import pygame, random, sys
 
 pygame.init()
 
-# --- Setup ---
+# --- Window Setup ---
 WIDTH, HEIGHT = 1000, 650
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Arena Gladiator")
+pygame.display.set_caption("Arena Battle")
+
 clock = pygame.time.Clock()
-font = pygame.font.SysFont("comicsans", 40)
 
-# --- Arena Map ---
-# 0 = empty floor
-# 1 = wall
-# 2 = enemy spawn point
-arena_map = [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-]
+# --- Colors ---
+WHITE = (255, 255, 255)
+RED = (200, 50, 50)
+GREEN = (50, 200, 50)
+BLUE = (0, 0, 255)
+BLACK = (0, 0, 0)
 
-TILE_SIZE = 50
-spawn_tiles = [(x, y) for y, row in enumerate(arena_map)
-               for x, t in enumerate(row) if t == 2]
-
-# --- Player Variables ---
-player_pos = pygame.Vector2(WIDTH // 2, HEIGHT // 2)
+# --- Player ---
+player = pygame.Rect(WIDTH // 2, HEIGHT - 150, 20, 20)
 player_speed = 5
-player_size = 12
-player_health = 5
-player_max_health = 5
+score = 0
+player_max_health = 3
+lives = player_max_health
+healing_potions = 0  # Track healing potions
 
-# --- Attack Variables ---
-attack_radius = 40
+# --- Invincibility ---
+invincibility_timer = 0
+invincibility_duration = 30  # frames (0.5 seconds at 60 FPS)
+
+# --- Attack Setup ---
 attack_active = 0
+attack_radius = 50
 attack_active_time = 5
 attack_cooldown = 0
 attack_cooldown_max = 30
 
-# --- Enemy Variables ---
-enemies = []
-enemy_size = 10
-enemy_speed = 3
+# --- Font Setup ---
+pygame.font.init()
+ui_font = pygame.font.SysFont(None, 36)
+
+# --- Spawner + Upgrade Door Positions ---
+spawners = [
+    pygame.Vector2(WIDTH * 0.05, 310),
+    pygame.Vector2(WIDTH * 0.5, 60),
+    pygame.Vector2(WIDTH * 0.95, 310),
+]
+upgrade_door = pygame.Rect(WIDTH // 2 - 50, HEIGHT - 80, 100, 20)
+
+# --- Enemies ---
+enemy_list = []
+enemy_speed = 2
 spawn_timer = 0
-spawn_delay = 60
+wave = 1
+enemies_per_wave = 3
+wave_cooldown = 120
+in_wave = False
+wave_timer = 0
 
-# --- Score ---
-score = 0
+# --- Upgrade Room ---
+in_upgrade_room = False
+upgrade_room_activated = False  # Tracks if player entered once
 
-# --- Helper Function for Wall Collision ---
-def is_wall(pos):
-    x_tile = int(pos.x // TILE_SIZE)
-    y_tile = int(pos.y // TILE_SIZE)
-    if 0 <= y_tile < len(arena_map) and 0 <= x_tile < len(arena_map[0]):
-        return arena_map[y_tile][x_tile] == 1
-    return False
+# --- Load Arena Background ---
+arena_bg = pygame.image.load("arena.png").convert()
+arena_bg = pygame.transform.scale(arena_bg, (WIDTH, HEIGHT))
+
+# --- Functions ---
+def spawn_wave():
+    global in_wave
+    in_wave = True
+    for _ in range(enemies_per_wave):
+        spawn_point = random.choice(spawners)
+        enemy = pygame.Rect(spawn_point.x, spawn_point.y, 40, 40)
+        enemy_list.append(enemy)
+
+def reset_wave():
+    global in_wave, wave_timer, wave, enemies_per_wave
+    wave += 1
+    enemies_per_wave += 1
+    wave_timer = 0
+    in_wave = False
 
 # --- Game Loop ---
 running = True
 while running:
+    screen.blit(arena_bg, (0, 0))
+
+    keys = pygame.key.get_pressed()
+    mouse_buttons = pygame.mouse.get_pressed()
+    mouse_pos = pygame.mouse.get_pos()
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-    # --- Input / Movement ---
-    keys = pygame.key.get_pressed()
-    move = pygame.Vector2(0, 0)
-    if keys[pygame.K_w]: move.y -= 1
-    if keys[pygame.K_s]: move.y += 1
-    if keys[pygame.K_a]: move.x -= 1
-    if keys[pygame.K_d]: move.x += 1
+    # Decrease invincibility timer
+    if invincibility_timer > 0:
+        invincibility_timer -= 1
 
-    if move.length() > 0:
-        move = move.normalize() * player_speed
-        new_pos = player_pos + move
-        if not is_wall(new_pos):
-            player_pos = new_pos
+    if not in_upgrade_room:
+        # === PLAYER MOVEMENT ===
+        if keys[pygame.K_a]:
+            player.x -= player_speed
+        if keys[pygame.K_d]:
+            player.x += player_speed
+        if keys[pygame.K_w]:
+            player.y -= player_speed
+        if keys[pygame.K_s]:
+            player.y += player_speed
 
-    # --- Spawn Enemies at Spawn Tiles ---
-    spawn_timer += 1
-    if spawn_timer >= spawn_delay:
-        spawn_timer = 0
-        spawn_x, spawn_y = random.choice(spawn_tiles)
-        enemies.append(pygame.Vector2(spawn_x * TILE_SIZE + TILE_SIZE // 2,
-                                      spawn_y * TILE_SIZE + TILE_SIZE // 2))
+        # === ATTACK INPUT ===
+        if attack_cooldown > 0:
+            attack_cooldown -= 1
 
-    # --- Move Enemies ---
-    for i, enemy in enumerate(enemies):
-        direction = player_pos - enemy
-        if direction.length() > 0:
-            direction = direction.normalize() * enemy_speed
-            new_enemy_pos = enemy + direction
-            if not is_wall(new_enemy_pos):
-                enemies[i] = new_enemy_pos
+        if mouse_buttons[0] and attack_cooldown == 0:
+            attack_active = attack_active_time
+            attack_cooldown = attack_cooldown_max
 
-    # --- Enemy Collisions (Damage Player) ---
-    for i in range(len(enemies) - 1, -1, -1):
-        if (enemies[i] - player_pos).length() < player_size + enemy_size:
-            player_health -= 1
-            enemies.pop(i)
+        # === ATTACK TIMER ===
+        if attack_active > 0:
+            attack_active -= 1
 
-    # --- Attack System ---
-    if pygame.mouse.get_pressed()[0] and attack_cooldown <= 0:
-        attack_active = attack_active_time
-        attack_cooldown = attack_cooldown_max
+        # Boundaries
+        player.x = max(0, min(WIDTH - player.width, player.x))
+        player.y = max(0, min(HEIGHT - player.height, player.y))
 
-    if attack_active > 0:
-        attack_active -= 1
-        for i in range(len(enemies) - 1, -1, -1):
-            if (enemies[i] - player_pos).length() < attack_radius + player_size:
-                enemies.pop(i)
-                score += 1
+        # === WAVE LOGIC ===
+        if not in_wave and len(enemy_list) == 0:
+            wave_timer += 1
+            if wave_timer > wave_cooldown:
+                spawn_wave()
 
-    if attack_cooldown > 0:
-        attack_cooldown -= 1
+        # === ENEMY MOVEMENT ===
+        for enemy in enemy_list[:]:
+            if player.x > enemy.x:
+                enemy.x += enemy_speed
+            if player.x < enemy.x:
+                enemy.x -= enemy_speed
+            if player.y > enemy.y:
+                enemy.y += enemy_speed
+            if player.y < enemy.y:
+                enemy.y -= enemy_speed
 
-    # --- Game Over Check ---
-    if player_health <= 0:
-        running = False
-        break
+        # === ENEMY COLLISION with invincibility ===
+        enemies_to_remove = []
+        for enemy in enemy_list:
+            if enemy.colliderect(player) and invincibility_timer == 0:
+                lives -= 1
+                invincibility_timer = invincibility_duration
+                enemies_to_remove.append(enemy)
+        for enemy in enemies_to_remove:
+            enemy_list.remove(enemy)
+
+        if lives <= 0:
+            running = False
+
+        # === ATTACK DAMAGE ===
+        if attack_active > 0:
+            attack_hitbox = pygame.Rect(
+                player.centerx - attack_radius,
+                player.centery - attack_radius,
+                attack_radius * 2,
+                attack_radius * 2
+            )
+            for enemy in enemy_list[:]:
+                if attack_hitbox.colliderect(enemy):
+                    enemy_list.remove(enemy)
+                    score += 10
+
+        # === WAVE COMPLETE ===
+        if in_wave and len(enemy_list) == 0:
+            reset_wave()
+
+        # === UPGRADE ROOM ENTRY ===
+        if player.colliderect(upgrade_door):
+            if not upgrade_room_activated:
+                in_upgrade_room = True
+                upgrade_room_activated = True
+        else:
+            upgrade_room_activated = False
+
+        # === USE HEALING POTION ===
+        if keys[pygame.K_e] and healing_potions > 0 and lives < player_max_health:
+            lives += 1
+            healing_potions -= 1
+
+    else:
+        # === UPGRADE ROOM SCREEN ===
+        screen.fill((40, 40, 60))
+        font = pygame.font.SysFont(None, 50)
+
+        upgrades = [
+            {"name": "Max Health +1", "cost": 50},
+            {"name": "Attack Radius +10", "cost": 30},
+            {"name": "Speed +1", "cost": 40},
+            {"name": "Healing Potion +1", "cost": 20}
+        ]
+
+        button_width = 400
+        button_height = 60
+        button_y_start = 150
+        button_gap = 80
+
+        for i, upgrade in enumerate(upgrades):
+            button_rect = pygame.Rect(
+                WIDTH // 2 - button_width // 2,
+                button_y_start + i * button_gap,
+                button_width,
+                button_height
+            )
+            color = (0, 200, 0) if score >= upgrade["cost"] else (100, 100, 100)
+            if button_rect.collidepoint(mouse_pos):
+                color = (0, 255, 0) if score >= upgrade["cost"] else (150, 150, 150)
+                if mouse_buttons[0] and score >= upgrade["cost"]:
+                    if i == 0:
+                        player_max_health += 1
+                    elif i == 1:
+                        attack_radius += 10
+                    elif i == 2:
+                        player_speed += 1
+                    elif i == 3:
+                        healing_potions += 1
+                    score -= upgrade["cost"]
+            pygame.draw.rect(screen, color, button_rect)
+            text = font.render(f"{upgrade['name']} - {upgrade['cost']} pts", True, WHITE)
+            screen.blit(text, (button_rect.centerx - text.get_width() // 2, button_rect.centery - text.get_height() // 2))
+
+        # Exit Upgrade Room
+        exit_text = font.render("Press [E] to Exit", True, WHITE)
+        screen.blit(exit_text, (WIDTH // 2 - exit_text.get_width() // 2, HEIGHT - 100))
+        if keys[pygame.K_e]:
+            in_upgrade_room = False
 
     # --- Drawing ---
-    screen.fill((20, 20, 30))
+    if not in_upgrade_room:
+        # Background
+        screen.blit(arena_bg, (0, 0))
 
-    # Draw Arena Walls
-    for y, row in enumerate(arena_map):
-        for x, tile in enumerate(row):
-            if tile == 1:
-                pygame.draw.rect(screen, (50, 50, 50),
-                                 (x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
+        # Player
+        player_pos = (player.centerx, player.centery)
+        player_size = player.width // 2
+        pygame.draw.circle(screen, (0, 255, 0), player_pos, player_size)
 
-    # Player
-    pygame.draw.circle(screen, (0, 255, 0), player_pos, player_size)
+        # Attack Hitbox Visual
+        if attack_active > 0:
+            pygame.draw.circle(screen, (0, 150, 255), player_pos, attack_radius, 2)
 
-    # Attack Hitbox Visual
-    if attack_active > 0:
-        pygame.draw.circle(screen, (0, 150, 255), player_pos, attack_radius, 2)
+        # Enemies
+        enemy_draw_radius = 20
+        for enemy in enemy_list:
+            enemy_pos = (enemy.centerx, enemy.centery)
+            pygame.draw.circle(screen, (255, 0, 0), enemy_pos, enemy_draw_radius)
 
-    # Enemies
-    for enemy in enemies:
-        pygame.draw.circle(screen, (255, 0, 0), enemy, enemy_size)
+        # Score
+        score_text = ui_font.render(f"Score: {score}", True, WHITE)
+        screen.blit(score_text, (20, 20))
 
-    # Score
-    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
-    screen.blit(score_text, (20, 20))
+        # Health bar
+        pygame.draw.rect(screen, (100, 0, 0), (20, 60, 100, 10))
+        health_ratio = max(0, min(1, lives / player_max_health))
+        pygame.draw.rect(screen, (0, 255, 0), (20, 60, 100 * health_ratio, 10))
 
-    # Player Health Bar
-    pygame.draw.rect(screen, (100, 0, 0), (20, 630, 100, 10))
-    pygame.draw.rect(screen, (0, 255, 0), (20, 630, 100 * (player_health / player_max_health), 10))
-
-    pygame.display.flip()
-    clock.tick(60)
-
-# --- Game Over Screen ---
-game_over = True
-while game_over:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            game_over = False
-
-    screen.fill((20, 20, 30))
-    game_over_text = font.render("GAME OVER", True, (255, 0, 0))
-    score_text = font.render(f"Final Score: {score}", True, (255, 255, 255))
-
-    screen.blit(game_over_text, (WIDTH // 2 - game_over_text.get_width() // 2, HEIGHT // 2 - 50))
-    screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, HEIGHT // 2 + 10))
+        # Draw healing potion count
+        potion_radius = 20
+        potion_x = WIDTH - 50
+        potion_y = HEIGHT - 50
+        pygame.draw.circle(screen, BLUE, (potion_x, potion_y), potion_radius)
+        potion_text = ui_font.render(str(healing_potions), True, WHITE)
+        screen.blit(potion_text, (potion_x - potion_text.get_width() // 2, potion_y - potion_text.get_height() // 2))
 
     pygame.display.flip()
     clock.tick(60)
